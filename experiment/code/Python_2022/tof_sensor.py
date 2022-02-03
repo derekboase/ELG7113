@@ -1,4 +1,3 @@
-import numpy as np
 import VL53L1X
 
 from time import sleep

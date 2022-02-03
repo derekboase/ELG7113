@@ -22,6 +22,16 @@ def varry_duty():
 			pwm.ChangeDutyCycle(duty)
 			sleep(0.01)
 		sleep(1)
+		
+def user_input_pwm():
+	'''
+	
+	'''
+	while True:
+		duty = float(input('Enter the pwm value: '))
+		pwm.ChangeDutyCycle(duty)
+		sleep(0.01)
+		
 
 def kill_pwm():
 	pwm.stop()
@@ -31,7 +41,8 @@ def kill_pwm():
 if __name__ == "__main__":
 	setup()
 	try:
-		varry_duty()
+		user_input_pwm()
+		# varry_duty()
 	except KeyboardInterrupt:
 		kill_pwm()
 	
