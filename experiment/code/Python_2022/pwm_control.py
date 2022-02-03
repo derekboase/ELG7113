@@ -4,6 +4,7 @@ from time import sleep
 
 PWM_PIN = 19 # Can use 12, 13, 19, 24
 
+
 def setup():
 	global pwm
 	GPIO.setmode(GPIO.BCM)
@@ -11,6 +12,7 @@ def setup():
 	GPIO.output(PWM_PIN, GPIO.LOW)
 	pwm = GPIO.PWM(PWM_PIN, 1000)
 	pwm.start(0)
+
 
 def varry_duty():
 	while True:
@@ -22,10 +24,14 @@ def varry_duty():
 			pwm.ChangeDutyCycle(duty)
 			sleep(0.01)
 		sleep(1)
-		
+
+
 def user_input_pwm():
 	'''
-	
+	Function prompts the user for a value in the range [0, 100] representing the duty cycle of the pwm.
+	This is meant to allow the user to determine the baseline pwm signal that keeps the ball levitating
+	at the opening.
+	:return: None
 	'''
 	while True:
 		duty = float(input('Enter the pwm value: '))
@@ -37,6 +43,7 @@ def kill_pwm():
 	pwm.stop()
 	GPIO.output(PWM_PIN, GPIO.LOW)
 	GPIO.cleanup()
+
 
 if __name__ == "__main__":
 	setup()
