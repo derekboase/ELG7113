@@ -12,9 +12,11 @@ gpio.output(arduino_int0_trig_pin, False)
 
 while True:
     input('Press any key to start fan characterisation test')
+    
+    print('Test running')
     gpio.output(arduino_int0_trig_pin, True)
     
-    time.sleep(5)
+    time.sleep(30)
     
     gpio.output(arduino_int0_trig_pin, False)
     
