@@ -30,12 +30,17 @@ ISR(INT0_vect){
 void loop()
 {
     if(int_flag){
-      for(int i=0; i<=255; i += 5){
+      for(int i=180; i<=255; i += 5){
         analogWrite(pin_fan, i);
+        Serial.println(map_float(i, 0, 255, 0, 100));
         Serial.println(fs.readMetersPerSecond()); // note, this returns a float from 0-7.23
-        delay(1000); // note, repsone time on the sensor is 125ms        
+        delay(2000); // note, repsone time on the sensor is 125ms        
       }
       analogWrite(pin_fan, 0);
       int_flag = false; // resets int_flag      
     }
+}
+
+float map_float(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
