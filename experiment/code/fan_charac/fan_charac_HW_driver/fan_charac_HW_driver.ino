@@ -2,8 +2,9 @@
 #include <SparkFun_FS3000_Arduino_Library.h>
 
 const byte pin_fan = 3;
+const byte start_duty = 180; // duty cycle encoded in 1 byte (0 - 255)
 const byte num_samples = 100;
-const int delay_samples = 500; // must be more than 125ms (fastest air flow measurments can go)
+const int delay_samples = 200; // must be more than 125ms (fastest air flow measurments can go)
 volatile bool int_flag = false;
 float duty_percent;
 
@@ -35,7 +36,7 @@ void loop()
 {
     if(int_flag){
       
-      for(int i=180; i<=255; i += 5){
+      for(int i=start_duty; i<255; i++){
         analogWrite(pin_fan, i);
         duty_percent = map_float(i, 0, 255, 0, 100);
         
