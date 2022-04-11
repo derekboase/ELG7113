@@ -35,7 +35,10 @@ def user_input_pwm():
 	'''
 	while True:
 		duty = float(input('Enter the pwm value: '))
-		pwm.ChangeDutyCycle(duty)
+		try:
+			pwm.ChangeDutyCycle(duty)
+		except ValueError:
+			print("[Err]\tPick value in range [0.0, 100.0]")  
 		sleep(0.01)
 		
 

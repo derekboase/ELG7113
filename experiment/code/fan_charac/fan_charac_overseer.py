@@ -6,7 +6,7 @@ arduino_int0_trig_pin = 16
 
 # Arduino Variables
 # Ensure these variables match those in Arduino script
-start_duty = 180 # duty cycle encoded in 1 byte (0 - 255)
+start_duty = 100 # duty cycle encoded in 1 byte (0 - 255)
 num_samples = 100
 delay_samples = 200 # in millis
 

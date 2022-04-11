@@ -2,7 +2,7 @@
 #include <SparkFun_FS3000_Arduino_Library.h>
 
 const byte pin_fan = 3;
-const byte start_duty = 180; // duty cycle encoded in 1 byte (0 - 255)
+const byte start_duty = 100; // duty cycle encoded in 1 byte (0 - 255)
 const byte num_samples = 100;
 const int delay_samples = 200; // must be more than 125ms (fastest air flow measurments can go)
 volatile bool int_flag = false;
