@@ -27,16 +27,43 @@ def reading_tof():
 def changing_pwm(new_val):
 	pwm.ChangeDutyCycle(new_val)
 	sleep(0.01)
+	
+	
+def user_input_pwm():
+	'''
+	Function prompts the user for a value in the range [0, 100] representing the duty cycle of the pwm.
+	This is meant to allow the user to determine the baseline pwm signal that keeps the ball levitating
+	at the opening.
+	:return: None
+	'''
+	duty = 0
+	while duty >=0:
+		duty = float(input('Enter the pwm value: '))
+		try:
+			pwm.ChangeDutyCycle(duty)
+		except ValueError:
+			if duty > 100.0:
+				print("[Err]\tPick value in range [0.0, 100.0], <0 to kill") 
+			else:
+				return -1
+		sleep(0.01)	
+		
+		
+def kill_pwm():
+	pwm.stop(0)
+	GPIO.output(PWM_PIN, GPIO.LOW)
+	GPIO.cleanup()
 
 
 if __name__ == "__main__":
 	setup()	
 	tof.open()
 	tof.start_ranging(1)
-	tof_thread = threading.Thread(target=reading_tof, daemon=True)
-	tof_thread.start()
-	count = 0
-	while count <20:
-		changing_pwm(float(input('Enter new value of PWM: ')))
-		count += 1
-	tof.stop_ranging()
+	try:
+		tof_thread = threading.Thread(target=reading_tof, daemon=True)
+		tof_thread.start()
+		user_input_pwm() # Set baseline pwm. Control/ID goes after
+	
+	except KeyboardInterrupt:
+		tof.stop_ranging() # This gets run once the code is stopped
+		kill_pwm()
