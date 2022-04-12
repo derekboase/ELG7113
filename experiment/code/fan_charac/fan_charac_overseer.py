@@ -5,12 +5,14 @@ import time
 arduino_int0_trig_pin = 16
 
 # Arduino Variables
-# Ensure these variables match those in Arduino script
+# Ensure these variables match those in Arduino script VVVVVVVVVVVVVVVVVVVVVVV
 start_duty = 100 # duty cycle encoded in 1 byte (0 - 255)
-num_samples = 100
-delay_samples = 200 # in millis
+end_duty = 255 # duty cycle encoded in 1 byte (0 - 255)
+num_samples = 100 # number of datapoints collected per duty cycle
+delay_samples = 200 # time between datapoints (in millis)
+# Ensure these variables match those in Arduino script^^^^^^^^^^^^^^^^^^^^^^^^
 
-test_time = (255-start_duty)*num_samples*delay_samples/60000 # test time in min
+test_time = (end_duty - start_duty)*num_samples*delay_samples/60000 # test time in min
 
 print_interval = 0.5 # in min
 print_loops = int(test_time//print_interval)
@@ -35,8 +37,8 @@ while True:
     print('Test running')
     gpio.output(arduino_int0_trig_pin, True)
     
-    for i in range(print_loops + 1):
-        print(f'{test_time - i*print_interval} minutes left')
+    for j in range(print_loops + 1):
+        print(f'{test_time - j*print_interval} minutes left')
         time.sleep(print_interval*60) # Gives time for data_coms to initialise
 
     

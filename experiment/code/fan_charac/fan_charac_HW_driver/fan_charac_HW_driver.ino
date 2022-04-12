@@ -2,9 +2,14 @@
 #include <SparkFun_FS3000_Arduino_Library.h>
 
 const byte pin_fan = 3;
+
+// Must be identical to python script VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
 const byte start_duty = 100; // duty cycle encoded in 1 byte (0 - 255)
-const byte num_samples = 100;
+const byte end_duty = 255; // duty cycle encoded in 1 byte (0 - 255)
+const byte num_samples = 100; // number of datapoints collected per duty cycle
 const int delay_samples = 200; // must be more than 125ms (fastest air flow measurments can go)
+// Must be identical to python script ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 volatile bool int_flag = false;
 float duty_percent;
 
@@ -36,9 +41,9 @@ void loop()
 {
     if(int_flag){
       
-      for(int i=start_duty; i<255; i++){
+      for(int i=start_duty; i<end_duty; i++){
         analogWrite(pin_fan, i);
-        duty_percent = map_float(i, 0, 255, 0, 100);
+        duty_percent = map_float(i, 0, 255, 0, 100); // min_duty, max_duty, min_percent, max_percent
         
         for(int j=0; j<=num_samples; j++){
           Serial.println(duty_percent);
