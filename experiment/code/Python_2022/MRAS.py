@@ -1,13 +1,14 @@
 import RPi.GPIO as GPIO
 import VL53L1X as VL
-
+import os
+import csv
 import threading
 from time import sleep
 import time
 import numpy as np
 import pandas as pd
 
-
+OUTPUT_DATA_PATH = "data.csv"
 PWM_PIN = 19 # Can use 12, 13, 19, 24
 
 df = pd.read_csv('dataset_1.csv')
@@ -17,7 +18,7 @@ lst_avg = [df['air_vel(m/s)'].loc[df['duty_cycle'] == lst_duty[i]].mean() for i 
 df_avg = pd.DataFrame(np.array([lst_duty, lst_avg]).T, columns=['duty_cycle','air_vel_avg(m/s)'])
 def lookup_cycle(air_vel):
     try:
-        lower_air_vels = df_avg[df_avg["air_vel_avg(m/s)"]<air_vel] 
+        lower_air_vels = df_avg[df_avg["air_vel_avg(m/s)"]<air_vel]
         result = list(lower_air_vels["duty_cycle"])[-1]
     except:
         result = 39.22
@@ -26,7 +27,7 @@ def lookup_cycle(air_vel):
 def setup():
     global pwm, tof
     tof = VL.VL53L1X(i2c_bus=1, i2c_address=0x29)
-    
+
     # Setting up the motor control PWM on pin 19 (BCM)
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(PWM_PIN, GPIO.OUT)
@@ -46,8 +47,8 @@ def setup():
 def changing_pwm(new_val):
     pwm.ChangeDutyCycle(new_val)
     sleep(0.01)
-    
-    
+
+
 def user_input_pwm():
     '''
     Function prompts the user for a value in the range [0, 100] representing the duty cycle of the pwm.
@@ -62,18 +63,18 @@ def user_input_pwm():
             pwm.ChangeDutyCycle(duty)
         except ValueError:
             if duty > 100.0:
-                print("[Err]\tPick value in range [0.0, 100.0], <0 to kill") 
+                print("[Err]\tPick value in range [0.0, 100.0], <0 to kill")
             else:
                 return -1
         sleep(0.01)
-        
-        
+
+
 def kill_pwm():
     pwm.stop(0)
     GPIO.output(PWM_PIN, GPIO.LOW)
     GPIO.cleanup()
-    
-    
+
+
 #constants
 ZETA = 1
 OMEGA = 0.7071
@@ -104,12 +105,12 @@ def system_model(uc_i, ym_p1_i, ym_i):
     ym_p2_o = (OMEGA**2)*uc_i - 2*ZETA*OMEGA*ym_p1_i - (OMEGA**2)*ym_i
     ym_p1_o = ym_p1_i + ts*ym_p2_o
     ym_o = ym_i + ts*ym_p1_o
-    
+
     system_model_dict = {"ym_p2":ym_p2_o,
                           "ym_p1":ym_p1_o,
                           "ym":ym_o}
     return system_model_dict
-    
+
     return system_dict
 
 def controller(y_i, uc_i, y_p1_i, th1, th2):
@@ -119,22 +120,22 @@ def controller(y_i, uc_i, y_p1_i, th1, th2):
 def Adaptation_Law_Model(y_i, ym_i, ym_p1_i, ym_p2_i,
                         theta1_p2_i, theta1_p1_i, theta1_i,
                         theta2_p2_i, theta2_p1_i, theta2_i):
-    
+
     #global theta1_p2_i, theta1_p1_i, theta1_i
     #global theta2_p2_i, theta2_p1_i, theta2_i
-    
+
     error = y_i - ym_i
-    
+
     theta1_p3_o = (GAMMA*error/OMEGA**2)*(2*ZETA*OMEGA*ym_p1_i+ym_p2_i) - 2*ZETA*OMEGA*theta1_p2_i - (OMEGA**2)*theta1_p1_i
     theta1_p2_o = theta1_p2_i + ts*theta1_p3_o
     theta1_p1_o = theta1_p1_i + ts*theta1_p2_o
     theta1_o = theta1_i + ts*theta1_p1_o
-    
+
     theta2_p3_o = GAMMA*error*ym_p1_i - 2*ZETA*OMEGA*theta2_p2_i - (OMEGA**2)*theta2_p1_i
     theta2_p2_o = theta2_p2_i + ts*theta2_p3_o
     theta2_p1_o = theta2_p1_i + ts*theta2_p2_o
     theta2_o = theta2_i + ts*theta2_p1_o
-    
+
     result_dict = {
                    "theta1_p2": theta1_p2_o,
                    "theta1_p1": theta1_p1_o,
@@ -159,16 +160,22 @@ def calc_speed(pos):
     if len(last2_pos)>2:
         y_p1_i = (last2_pos[2]-last2_pos[1])/_T
         last2_pos.pop(0)
-        
+
 
 TARGET_POSITION = 0.2
+ts = 0
 #pwm.ChangeDutyCycle(0)
+
+datafile = open(OUTPUT_DATA_PATH, 'w', newline='')
+data_writer = csv.writer(datafile)
+data_header = ["timestep","y", "ym", "uc", "u", "theta1", "theta2"]
+data_writer.writerow(data_header)
 if __name__ == "__main__":
     setup()
     tof.open()
     tof.start_ranging(1)
     uc_i = TARGET_POSITION
-    
+
     try:
 #         tof_thread = threading.Thread(target=reading_tof, daemon=True)
 #         tof_thread.start()
@@ -180,12 +187,12 @@ if __name__ == "__main__":
             print("position = " +str(y_i))
             calc_speed(y_i)
             print("speed = "+ str(y_p1_i))
-            
+
             model_results = system_model(uc_i, ym_p1_i, ym_i)
             ym_p2_i = model_results["ym_p2"]
             ym_p1_i = model_results["ym_p1"]
             ym_i = model_results["ym"]
-            
+
             adapt_val = Adaptation_Law_Model(y_i, ym_i, ym_p1_i, ym_p2_i,
                             theta1_p2_i, theta1_p1_i, theta1_i,
                             theta2_p2_i, theta2_p1_i, theta2_i)
@@ -199,9 +206,14 @@ if __name__ == "__main__":
             print(" ")
             print(time.process_time() - _T)
             _T = time.process_time()
-            
+
             pwm.ChangeDutyCycle(duty_cycle)
+
+            data_row = [ts, y_i, ym_i, uc_i, u_i, theta1_i, theta2_i]
+            writer.writerow(data_row)
+            ts = ts + 1
+
+
     except KeyboardInterrupt:
         tof.stop_ranging() # This gets run once the code is stopped
         kill_pwm()
-
