@@ -7,7 +7,7 @@ def setup():
     for i in range(20):
         serialPort.readline()
     print('taken out trash')
-    serialPort.flush() 
+    serialPort.reset_input_buffer()
     baseline = []
     for j in range(50):
         while not serialPort.inWaiting():

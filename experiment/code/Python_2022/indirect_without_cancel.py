@@ -90,7 +90,7 @@ if __name__ == "__main__":
         volume_ball = 4/3*np.pi*radius**3
         density = 1.2  # kg/m^3
 
-        Ts_val = 0.4190
+        Ts_val = 0.046
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
         omega_n = 0.7
@@ -111,16 +111,16 @@ if __name__ == "__main__":
         A0 = 0.5
         T0_num = AM1 + AM2 + 1
         T1_num = A0*(T0_num)
-        lam = 1
+        lam = 0.9
         # initial_P_weights = [1000]*4
-        initial_P_weights = [100, 100, 0.1, 0.1]
+        initial_P_weights = [100, 1, 0.0, 0.0]
         # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
-        final_time = 20
+        final_time = 40
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.1, upper_set=0.2, period=40):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.0, upper_set=0.38, period=40):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -262,10 +262,12 @@ if __name__ == "__main__":
             time_ns = time.time_ns()
             
             # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
-            print(theta_hat)
+            # print(theta_hat)
+            print(uc_val[k])
 
         time_np_arr = np.array(time_arr)
-        print(f'mean={time_np_arr.mean()},\tvar={time_np_arr.var()}')
+        # print(f'mean={time_np_arr.mean()},\tvar={time_np_arr.var()}')
+        
 
         # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
         # print(theta_hat)
