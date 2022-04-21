@@ -25,7 +25,7 @@ time_arr = []
 bottom = np.array(setup())
 print(bottom.mean())
 time_ns = time.time_ns()
-for k in range(200):
+for k in range(50):
     while not serialPort.inWaiting():
         pass
     height = np.array([float(serialPort.readline().decode('utf-8').rstrip())])

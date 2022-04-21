@@ -1,6 +1,7 @@
 ## Library import
 import matplotlib.pyplot as plt
 import RPi.GPIO as GPIO
+import poly_fit as pf
 import look_up as lu
 import control as co
 import pandas as pd
@@ -12,13 +13,18 @@ from numpy.linalg import inv
 
 if __name__ == "__main__":
     try:
-        filepath = '../fan_charac/datasets/v_look_up_table.csv'
-        VL = lu.v_lut(filepath)
+        veq = 2.78 # m/s
+        
+        # filepath = '../fan_charac/datasets/v_look_up_table.csv'
+        # VL = lu.v_lut(filepath, v_eq=veq, v_min=2.5, v_max = 2.85)
+        
+        VL = pf.v_polyfit(v_eq=veq, v_min=2.5, v_max = 2.9)
 
         ## Functions
 
         PWM_PIN = 19 # Can use 12, 13, 19, 24
-        D_EQ = 71.5
+        D_EQ = VL.vel2duty(0)
+        print(VL.vel2duty(0))
 
         def setup():
             global pwm    
@@ -50,10 +56,7 @@ if __name__ == "__main__":
                 while not ser.inWaiting():
                     pass # NOP
                 height = np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
-                print(height)
                 baseline.append(height)
-            # changing_pwm(72.1)
-            time.sleep(5)
             return np.array(baseline).mean()
             
         def changing_pwm(new_val):
@@ -86,13 +89,12 @@ if __name__ == "__main__":
         area_ball = np.pi * radius**2
         volume_ball = 4/3*np.pi*radius**3
         density = 1.2  # kg/m^3
-        veq = 2.8 # m/s
 
-        Ts_val = 0.1393
+        Ts_val = 0.4190
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
         omega_n = 0.7
-        zeta = 1
+        zeta = 1.25
 
         ## Coefficients from the nominal pulse function
 
@@ -110,14 +112,15 @@ if __name__ == "__main__":
         T0_num = AM1 + AM2 + 1
         T1_num = A0*(T0_num)
         lam = 1
-        initial_P_weights = [100]*4
+        # initial_P_weights = [1000]*4
+        initial_P_weights = [100, 100, 0.1, 0.1]
         # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
         final_time = 20
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.15, upper_set=0.15, period=20):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.1, upper_set=0.2, period=40):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -135,8 +138,11 @@ if __name__ == "__main__":
         input('Place the ball in the bottom. Press ENTER to continue...')
         bottom = baseline()
         print(f'The baseline reading is {bottom}')
+        changing_pwm(72.0)
+        time.sleep(2)
 
             # Estimates k = 0
+        # pulse_coeffs = [] 
         theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
         theta_arr = theta_hat
         P = np.diag(initial_P_weights)
@@ -145,6 +151,7 @@ if __name__ == "__main__":
             # Measurements and control parameters k = 0
         print('*******************************************************')
         print('\t\tSTARTING CODE')
+        print(f'\t\tCoeffs={pulse_coeffs}')
         print('*******************************************************')
         time.sleep(2.5)
         ser.reset_input_buffer()
@@ -255,7 +262,7 @@ if __name__ == "__main__":
             time_ns = time.time_ns()
             
             # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
-            # print(theta_hat)
+            print(theta_hat)
 
         time_np_arr = np.array(time_arr)
         print(f'mean={time_np_arr.mean()},\tvar={time_np_arr.var()}')
