@@ -1,15 +1,19 @@
 ## Library import
+import matplotlib.pyplot as plt
+import RPi.GPIO as GPIO
+import look_up as lu
+import control as co
+import pandas as pd
+import serial as sp
+import numpy as np 
+import time
+
+from numpy.linalg import inv
+
 if __name__ == "__main__":
     try:
-        import matplotlib.pyplot as plt
-        import RPi.GPIO as GPIO
-        import control as co
-        import pandas as pd
-        import serial as sp
-        import numpy as np 
-        import time 
-
-        from numpy.linalg import inv
+        filepath = '../fan_charac/datasets/v_look_up_table.csv'
+        VL = lu.v_lut(filepath)
 
         ## Functions
 
@@ -40,18 +44,21 @@ if __name__ == "__main__":
             for i in range(20):
                 ser.readline()
             print('Taken out trash')
-            ser.flush() 
+            ser.reset_input_buffer()
             baseline = []
             for j in range(50):
                 while not ser.inWaiting():
-                    pass
-                height = np.array([float(ser.readline().decode('utf-8').rstrip())])
+                    pass # NOP
+                height = np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
+                print(height)
                 baseline.append(height)
+            # changing_pwm(72.1)
+            time.sleep(5)
             return np.array(baseline).mean()
             
         def changing_pwm(new_val):
             try:
-                pwm.ChangeDutyCycle(pwm_val)
+                pwm.ChangeDutyCycle(new_val)
             except ValueError:
                 if pwm_val > 100.0:
                     print("[Err]\tVal too large")  
@@ -81,11 +88,11 @@ if __name__ == "__main__":
         density = 1.2  # kg/m^3
         veq = 2.8 # m/s
 
-        Ts_val = 0.046
+        Ts_val = 0.1393
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
         omega_n = 0.7
-        zeta = 1.25
+        zeta = 1
 
         ## Coefficients from the nominal pulse function
 
@@ -93,7 +100,6 @@ if __name__ == "__main__":
         pulse_coeffs = A[0][0][1:].tolist()
         for Bi in B[0][0]:
             pulse_coeffs.append(Bi)
-        pulse_coeffs
 
         ## Coefficients from the nominal model pulse function
 
@@ -103,15 +109,15 @@ if __name__ == "__main__":
         A0 = 0.5
         T0_num = AM1 + AM2 + 1
         T1_num = A0*(T0_num)
-        lam = 0.98
-        initial_P_weights = [1000]*4
-        theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
+        lam = 1
+        initial_P_weights = [100]*4
+        # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
-        final_time = 60
+        final_time = 20
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.1, upper_set=0.2, period=30):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.15, upper_set=0.15, period=20):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -126,20 +132,26 @@ if __name__ == "__main__":
         ## Beginning of the control algorithm
 
         setup()
+        input('Place the ball in the bottom. Press ENTER to continue...')
         bottom = baseline()
-        #changing_pwm(71.5) # not needed because pwm.start is set to D_EQ
+        print(f'The baseline reading is {bottom}')
 
             # Estimates k = 0
         theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
         theta_arr = theta_hat
         P = np.diag(initial_P_weights)
-        phi = np.zeros((4,1))
+        phi = np.zeros((4,1))  ## CONSIDER MOVING UP
 
             # Measurements and control parameters k = 0
+        print('*******************************************************')
+        print('\t\tSTARTING CODE')
+        print('*******************************************************')
+        time.sleep(2.5)
+        ser.reset_input_buffer()
         # Measurement
         while not ser.inWaiting():
             pass
-        height = np.array([float(ser.readline().decode('utf-8').rstrip())]) - bottom
+        height = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
         y_measure = height.reshape(-1, )
 
         # Control parameters
@@ -157,15 +169,15 @@ if __name__ == "__main__":
         u_val = (N.T@M).reshape(-1, )
 
         ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
-        # pwm_val <-- LUT
-        pwm_val = 71.5 + u_val[0] # For testing without lookup table
+        pwm_val = VL.vel2duty(u_val[0])
+        # pwm_val = 71.5 + u_val[0] # For testing without lookup table
         changing_pwm(pwm_val)
 
 
             # Estimates k = 1
         phi = np.array([-y_measure[0], 0, u_val[0], 0], float).reshape(-1,1) # phi of 0
         K = P@phi@inv(lam + phi.T@P@phi)
-        theta_hat = theta_hat + K@(phi.T@theta - phi.T@theta_hat)
+        theta_hat = theta_hat + K@(-y_measure[0] - phi.T@theta_hat)
         theta_arr = np.concatenate((theta_arr, 
                                     theta_hat.reshape(-1, 1)), axis=1)
         P = (np.eye(len(phi)) - K@phi.T) @P/lam
@@ -174,7 +186,7 @@ if __name__ == "__main__":
         # Measurement
         while not ser.inWaiting():
             pass
-        height = np.array([float(ser.readline().decode('utf-8').rstrip())]) - bottom
+        height = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
         y_measure = np.concatenate((y_measure,
                                     (height).reshape(-1,)))   
 
@@ -194,8 +206,8 @@ if __name__ == "__main__":
                                 (N.T@M).reshape(-1,)))
                                 
         ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
-        #pwm_val <-- LUT
-        pwm_val += u_val[1] # For testing without lookup table
+        pwm_val = VL.vel2duty(u_val[1])
+        # pwm_val += u_val[1] # For testing without lookup table
         changing_pwm(pwm_val)
 
             # Measurements and control parameters k
@@ -205,7 +217,7 @@ if __name__ == "__main__":
         for k in range(2, len(t)):
             phi = np.array([-y_measure[k-1], -y_measure[k-2], u_val[k-1], u_val[k-2]], float).reshape(-1,1)
             K = P@phi@inv(lam + phi.T@P@phi)
-            theta_hat = theta_hat + K@(phi.T@theta - phi.T@theta_hat)
+            theta_hat = theta_hat + K@(-y_measure[k-1] - phi.T@theta_hat)
             theta_arr = np.concatenate((theta_arr, 
                                         theta_hat.reshape(-1, 1)), axis=1)
             P = (np.eye(len(phi)) - K@phi.T)@P/lam
@@ -214,9 +226,9 @@ if __name__ == "__main__":
             # Measurement
             while not ser.inWaiting():
                 pass
-            height = np.array([float(ser.readline().decode('utf-8').rstrip())]) - bottom
+            height = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
             y_measure = np.concatenate((y_measure,
-                                (phi.T@theta).reshape(-1,)))      
+                                (height).reshape(-1,)))      
             
             # Control parameters
             a1, a2, b0, b1 = theta_hat[0], theta_hat[1], theta_hat[2], theta_hat[3]
@@ -234,17 +246,37 @@ if __name__ == "__main__":
                                     (N.T@M).reshape(-1,))) 
 
             ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
-            #pwm_val <-- LUT
-            pwm_val += u_val[k] # For testing without lookup table
+            pwm_val = VL.vel2duty(u_val[k])
+            # pwm_val += u_val[k] # For testing without lookup table
             changing_pwm(pwm_val)
             
             time_delta = (time.time_ns() - time_ns)*1e-9
             time_arr.append(time_delta)
             time_ns = time.time_ns()
+            
+            # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
+            # print(theta_hat)
 
         time_np_arr = np.array(time_arr)
-        print(f'mean={time_np_arr.mean()},\tvar={time_np_arr[10:].var()}')
+        print(f'mean={time_np_arr.mean()},\tvar={time_np_arr.var()}')
 
-        input('Press any key to kill.')
+        # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
+        # print(theta_hat)
+
+        input('Press ENTER to see graphs')
+        for row in range(len(theta_arr)):
+            plt.plot(t, theta_arr[row,:])
+        plt.show()
+
+        et = len(t)
+        plt.plot(t[0:et], y_measure[0:et])
+        plt.plot(t[0:et], uc_val[0:et])
+        plt.show()
+        plt.step(t[0:et], u_val[0:et])
+        plt.show()
+
+        input('Press ENTER to kill.')
+        kill_pwm()
+        
     except KeyboardInterrupt:
         kill_pwm()
