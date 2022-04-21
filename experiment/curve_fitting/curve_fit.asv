@@ -1,0 +1,12 @@
+clc;
+data = readmatrix('../code/fan_charac/datasets/v_look_up_table.csv');
+
+
+idx = 10;
+
+duty = data(:idx,1);
+vel = data(:idx,2);
+
+scatter(duty,vel)
+% cftool(duty, vel)
+
