@@ -41,7 +41,7 @@ if __name__ == "__main__":
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setup(PWM_PIN, GPIO.OUT)
                 GPIO.output(PWM_PIN, GPIO.LOW)
-                pwm = GPIO.PWM(PWM_PIN, 1000)
+                pwm = GPIO.PWM(PWM_PIN, 10000)
                 pwm.start(D_EQ)
             except RuntimeWarning:
                 kill_pwm()
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setup(PWM_PIN, GPIO.OUT)
                 GPIO.output(PWM_PIN, GPIO.LOW)
-                pwm = GPIO.PWM(PWM_PIN, 1000)
+                pwm = GPIO.PWM(PWM_PIN, 10000)
                 pwm.start(D_EQ)
 
         def generate_SPD_matrix(n):
@@ -112,13 +112,25 @@ if __name__ == "__main__":
         N = FINAL_TIME / TS_VAL
         Z_ACTOR = 0.1
         Z_CRITIC = 0.5
-        Q_1 = generate_SPD_matrix(3)
-        R_1 = generate_SPD_matrix(1)
+        # Q_1 = generate_SPD_matrix(3)
+        # R_1 = generate_SPD_matrix(1)
+
+        Q_1 = np.array([[0.51502986, 0.25789362, 0.06580822],
+                    [0.25789362, 0.19214249, 0.0747135],
+                    [0.06580822, 0.0747135, 0.0378436]])
+        R_1 = np.array([[0.07450969]])
 
         k, converge = 1, False  # Index and convergence flag
         E_k_1 = np.zeros((3, 1))  # Current quadratic error vector shape(3, 1)
         E_k1_1 = np.zeros((3, 1))  # Future quadratic error vector shape(3, 1)
-        Wc_1 = generate_SPD_matrix(4)  # Initial critic matrix shape(4, 4)
+        
+        # Wc_1 = generate_SPD_matrix(4)  # Initial critic matrix shape(4, 4)
+
+        Wc_1 = np.array([[ 0.80349833,  0.30936819,  0.84494049,  0.71454207],
+                         [ 0.30936819,  0.21330422,  0.31156708,  0.36979277],
+                         [ 0.84494049,  0.31156708,  1.09927468,  0.53434843],
+                         [ 0.71454207,  0.36979277,  0.53434843,  0.9285541 ]])
+
         Wa_1 = (1/Wc_1[3][3]*Wc_1[3][0:3]).reshape(1, 3)  # Initial actor matrix shape(1, 3) 
         Wa_1[0, 1] *= -1 # Negating the middle element (to add stability "pole" in the actor vector)
         Wa_1_1, Wa_1_2, Wa_1_3 = [], [], []
@@ -140,13 +152,12 @@ if __name__ == "__main__":
             u_hat_1 = bound(LOWER_BOUND, UPPER_BOUND, (Wa_1@E_k_1).reshape(1, ))  # shape(1,) REPLACE WITH (Wa_1@E_k_1).reshape(1, )
             u_hat_1_arr.append(u_hat_1)
             pwm_val += u_hat_1
-            ## SEND PWM signal
             changing_pwm(pwm_val)
             
             # Find V and U: Step 8 
             Eu_concat_1 = np.concatenate((E_k_1, u_hat_1.reshape(-1, 1)), axis=0)
-            V_k_1 = 1/2.0 * Eu_concat_1.T@Wc_1@Eu_concat_1
-            eqe_1 = E_k_1.T@Q_1@E_k_1
+            V_k_1 = 1/2.0 * (Eu_concat_1.T@Wc_1)@Eu_concat_1
+            eqe_1 = (E_k_1.T@Q_1)@E_k_1
             uru_1 = u_hat_1*R_1*u_hat_1
             U_k_1 = 1 / 2.0 * (eqe_1 + uru_1)
 
@@ -164,14 +175,14 @@ if __name__ == "__main__":
             E_k1_1[1] = E_k_1[0]
             E_k1_1[0] = ym[k] - y_measure[k]
 
-            u_hat_k1_1 = bound(LOWER_BOUND, UPPER_BOUND, (Wa_1@E_k_1).reshape(1, ))  # shape(1,)
+            u_hat_k1_1 = bound(LOWER_BOUND, UPPER_BOUND, (Wa_1@E_k1_1).reshape(1, ))  # shape(1,)
             Z_1 = np.concatenate((E_k1_1, u_hat_k1_1.reshape(-1, 1)), axis=0)
-            V_k1_1 = 1/2.0*Z_1.T@Wc_1@Z_1
+            V_k1_1 = 1/2.0*(Z_1.T@Wc_1)@Z_1
 
             # Update critic weights: Step 11 
             temp = Z_CRITIC*(V_k_1 - (U_k_1 + V_k1_1))
-            Wc_1 -= temp*Z_1@Z_1.T
-            Wa_1 -= Z_ACTOR*(Wa_1@E_k_1 - (-1/Wc_1[3][3]*Wc_1[3][0:3]@E_k_1))*E_k_1.T
+            Wc_1 -= temp*(Z_1@Z_1.T)
+            Wa_1 -= Z_ACTOR*(Wa_1@E_k_1 - (-1/Wc_1[3][3]*(Wc_1[3][0:3]@E_k_1)))*E_k_1.T
 
             # Updates
             E_k_1 = E_k1_1            
