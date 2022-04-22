@@ -13,17 +13,17 @@ from numpy.linalg import inv
 
 if __name__ == "__main__":
     try:
-        D_MIN = 0.0
-        D_MAX = 100
-        D_EQ = 71.5 
+        D_MIN = 40
+        D_MAX = 85
+        D_EQ = 71.5
         PWM_PIN = 19 # Using BCM enumeration
-        FINAL_TIME = 120
-        TS_VAL = 0.046
+        FINAL_TIME = 200
+        TS_VAL = 0.2322
         t = np.arange(0, FINAL_TIME + TS_VAL, TS_VAL)
-        LOWER_BOUND = -0.35
-        UPPER_BOUND = 0.35
+        LOWER_BOUND = -0.05
+        UPPER_BOUND = 0.005
 
-        def reference_signal(end_time=FINAL_TIME, Ts_func=TS_VAL, lower_set=0.1, upper_set=0.2, period=40):
+        def reference_signal(end_time=FINAL_TIME, Ts_func=TS_VAL, lower_set=0.25, upper_set=0.25, period=1000):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -60,8 +60,8 @@ if __name__ == "__main__":
             :return: np array of dimensions nxn
             """
             A = np.random.rand(n, n)
-            return 1/2.0 * np.matmul(A, np.transpose(A))
-        
+            return 1/2.0 * A@A.T
+                    
         def bound(low, high, val):
             return np.array([max(low, min(high, val))])
         
@@ -110,12 +110,12 @@ if __name__ == "__main__":
         ## Control Algorithm
 
         N = FINAL_TIME / TS_VAL
-        Z_ACTOR = 0.01
-        Z_CRITIC = 0.05
+        Z_ACTOR = 0.1
+        Z_CRITIC = 0.5
         Q_1 = generate_SPD_matrix(3)
         R_1 = generate_SPD_matrix(1)
 
-        k, converge = 0, False  # Index and convergence flag
+        k, converge = 1, False  # Index and convergence flag
         E_k_1 = np.zeros((3, 1))  # Current quadratic error vector shape(3, 1)
         E_k1_1 = np.zeros((3, 1))  # Future quadratic error vector shape(3, 1)
         Wc_1 = generate_SPD_matrix(4)  # Initial critic matrix shape(4, 4)
@@ -125,7 +125,13 @@ if __name__ == "__main__":
         u_hat_1_arr = []
         pwm_val = D_EQ
         y_measure = np.array([0])
-
+        
+        print('*******************************************************')
+        print('\t\tSTARTING CODE')
+        print('*******************************************************')
+        time.sleep(10)
+        time_arr = []
+        time_ns = time.time_ns()
         while k < N and not converge:
             Wa_1_1.append(Wa_1[0, 0])
             Wa_1_2.append(Wa_1[0, 1])
@@ -145,16 +151,18 @@ if __name__ == "__main__":
             U_k_1 = 1 / 2.0 * (eqe_1 + uru_1)
 
                 # Measurement
+            ser.reset_input_buffer()
             while not ser.inWaiting():
                 pass
             height = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
+            ser.reset_input_buffer()
             y_measure = np.concatenate((y_measure,
                                         (height).reshape(-1,))) 
 
             # Get E(k + 1), u_hat and V(k_1): Step 9 
             E_k1_1[2] = E_k_1[1]
             E_k1_1[1] = E_k_1[0]
-            E_k1_1[0] = ym - y_measure[k]
+            E_k1_1[0] = ym[k] - y_measure[k]
 
             u_hat_k1_1 = bound(LOWER_BOUND, UPPER_BOUND, (Wa_1@E_k_1).reshape(1, ))  # shape(1,)
             Z_1 = np.concatenate((E_k1_1, u_hat_k1_1.reshape(-1, 1)), axis=0)
@@ -168,6 +176,13 @@ if __name__ == "__main__":
             # Updates
             E_k_1 = E_k1_1            
             k += 1
+            time_delta = (time.time_ns() - time_ns)*1e-9
+            time_arr.append(time_delta)
+            time_ns = time.time_ns()
+            print(f'y={y_measure[-1]}\t,u_hat={u_hat_1}')
+        
+        print(Wc_1)
+        print(Wa_1)
 
         input('Press ENTER to see graphs')
 
