@@ -18,7 +18,7 @@ if __name__ == "__main__":
         # filepath = '../fan_charac/datasets/v_look_up_table.csv'
         # VL = lu.v_lut(filepath, v_eq=veq, v_min=2.5, v_max = 2.85)
         
-        VL = pf.v_polyfit(v_eq=veq, v_min=2.6, v_max = 2.82)
+        VL = pf.v_polyfit(v_eq=veq, v_min=2.5, v_max = 2.9)
 
         ## Functions
 
@@ -90,11 +90,11 @@ if __name__ == "__main__":
         volume_ball = 4/3*np.pi*radius**3
         density = 1.2  # kg/m^3
 
-        Ts_val = 0.139
+        Ts_val = 0.2328
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
-        omega_n = 0.7
-        zeta = 1  
+        omega_n = 1
+        zeta = 1
 
         ## Coefficients from the nominal pulse function
 
@@ -108,17 +108,17 @@ if __name__ == "__main__":
         Bmz_tf, Amz_tf = co.tfdata(co.sample_system(co.tf([1], [1, 2*zeta*omega_n, omega_n**2]), method='zoh', Ts=Ts_val))
         AM1 = Amz_tf[0][0][1]
         AM2 = Amz_tf[0][0][2]
-        A0 = 0.5
-        T0_num = AM1 + AM2 + 1
-        T1_num = A0*(T0_num)
-        lam = 0.9
-        initial_P_weights = [100]*4
-        # initial_P_weights = [1000, 1000, 0.01, 0.0]
+        AM_SUM = 1 + AM1  + AM2
+        A0 = np.array([1])
+
+        lam = 1
+        #initial_P_weights = [1000]*4
+        initial_P_weights = [100, 10, 0.1, 0.1]
         # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
-        final_time = 20
+        final_time = 40
         t = np.arange(0, final_time + Ts_val, Ts_val)
         def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.1, upper_set=0.2, period=40):
             uc_func = []
@@ -138,15 +138,15 @@ if __name__ == "__main__":
         input('Place the ball in the bottom. Press ENTER to continue...')
         bottom = baseline()
         print(f'The baseline reading is {bottom}')
-        changing_pwm(72.0)
-        time.sleep(2)
+        # changing_pwm(72.0)
+        # time.sleep(2)
 
             # Estimates k = 0
-        pulse_coeffs = [0.5, 0, 1, 1] 
+        # pulse_coeffs = [] 
         theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
         theta_arr = theta_hat
         P = np.diag(initial_P_weights)
-        phi = np.zeros((4,1))  ## CONSIDER MOVING UP
+        phi = np.zeros((4,1))  
 
             # Measurements and control parameters k = 0
         print('*******************************************************')
@@ -162,18 +162,14 @@ if __name__ == "__main__":
         y_measure = height.reshape(-1, )
 
         # Control parameters
-        a1, a2, b0, b1 = theta_hat[0], theta_hat[1], theta_hat[2], theta_hat[3]
-        den_rs = ((-a1*b0*b1) + (a2*b0**2) + b1**2)   
-        den_t = b0 + b1
-        r0_val = 1/den_rs*((A0*AM2)*b0**2 + (-a1 + A0 + AM1)*b1**2 + (a2 - A0*AM1 - AM2)*b0*b1)
-        s0_val = 1/den_rs*((-a1*a2 + a2*(A0 + AM1) - A0*AM2)*b0 + (a1**2 - a1*(A0 + AM1) - a2 + A0*AM1 + AM2)*b1)
-        s1_val = 1/den_rs*((-a2**2 + A0*(a2*AM1 - a1*AM2) + a2*AM2)*b0 + (a2*(a1 - A0 - AM1) + A0*AM2)*b1)
-        t0_val = T0_num/den_t
-        t1_val = T1_num/den_t
+        r0_est = theta_hat[3]
+        s0_est = A0*AM1 - theta_hat[0]
+        s1_est = A0*AM2 - theta_hat[1]
+        t0_est = A0*AM_SUM
 
-        M = np.array([r0_val, s0_val, s1_val, t0_val, t1_val], float).reshape(-1, 1)
-        N = np.array([0, -y_measure[0], 0, uc_val[0], 0], float).reshape(M.shape)
-        u_val = (N.T@M).reshape(-1, )
+        M = np.array([r0_est, s0_est, s1_est, t0_est], float).reshape(-1, 1)
+        N = np.array([0, -y_measure[0], 0, uc_val[0]], float).reshape(M.shape)
+        u_val = 1/theta_hat[2]*(N.T@M).reshape(-1,)
 
         ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
         pwm_val = VL.vel2duty(u_val[0])
@@ -198,19 +194,15 @@ if __name__ == "__main__":
                                     (height).reshape(-1,)))   
 
         # Control parameters
-        a1, a2, b0, b1 = theta_hat[0], theta_hat[1], theta_hat[2], theta_hat[3]
-        den_rs = ((-a1*b0*b1) + (a2*b0**2) + b1**2)   
-        den_t = b0 + b1
-        r0_val = 1/den_rs*((A0*AM2)*b0**2 + (-a1 + A0 + AM1)*b1**2 + (a2 - A0*AM1 - AM2)*b0*b1)
-        s0_val = 1/den_rs*((-a1*a2 + a2*(A0 + AM1) - A0*AM2)*b0 + (a1**2 - a1*(A0 + AM1) - a2 + A0*AM1 + AM2)*b1)
-        s1_val = 1/den_rs*((-a2**2 + A0*(a2*AM1 - a1*AM2) + a2*AM2)*b0 + (a2*(a1 - A0 - AM1) + A0*AM2)*b1)
-        t0_val = T0_num/den_t
-        t1_val = T1_num/den_t
+        r0_est = theta_hat[3]
+        s0_est = A0*AM1 - theta_hat[0]
+        s1_est = A0*AM2 - theta_hat[1]
+        t0_est = A0*AM_SUM
 
-        M = np.array([r0_val, s0_val, s1_val, t0_val, t1_val], float).reshape(-1, 1)
-        N = np.array([-u_val[0], -y_measure[1], -y_measure[0], uc_val[1], uc_val[0]],float).reshape(M.shape)
+        M = np.array([r0_est, s0_est, s1_est, t0_est], float).reshape(-1, 1)
+        N = np.array([-u_val[0], -y_measure[1], -y_measure[0], uc_val[1]],float).reshape(M.shape)
         u_val = np.concatenate((u_val, 
-                                (N.T@M).reshape(-1,)))
+                                1/theta_hat[2]*(N.T@M).reshape(-1,)))
                                 
         ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
         pwm_val = VL.vel2duty(u_val[1])
@@ -234,24 +226,19 @@ if __name__ == "__main__":
             while not ser.inWaiting():
                 pass
             height = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
-            print(height)
             y_measure = np.concatenate((y_measure,
                                 (height).reshape(-1,)))      
             
             # Control parameters
-            a1, a2, b0, b1 = theta_hat[0], theta_hat[1], theta_hat[2], theta_hat[3]
-            den_rs = ((-a1*b0*b1) + (a2*b0**2) + b1**2)   
-            den_t = b0 + b1
-            r0_val = 1/den_rs*((A0*AM2)*b0**2 + (-a1 + A0 + AM1)*b1**2 + (a2 - A0*AM1 - AM2)*b0*b1)
-            s0_val = 1/den_rs*((-a1*a2 + a2*(A0 + AM1) - A0*AM2)*b0 + (a1**2 - a1*(A0 + AM1) - a2 + A0*AM1 + AM2)*b1)
-            s1_val = 1/den_rs*((-a2**2 + A0*(a2*AM1 - a1*AM2) + a2*AM2)*b0 + (a2*(a1 - A0 - AM1) + A0*AM2)*b1)
-            t0_val = T0_num/den_t
-            t1_val = T1_num/den_t
+            r0_est = theta_hat[3]
+            s0_est = A0*AM1 - theta_hat[0]
+            s1_est = A0*AM2 - theta_hat[1]
+            t0_est = A0*AM_SUM
 
-            M = np.array([r0_val, s0_val, s1_val, t0_val, t1_val], float).reshape(-1, 1)
-            N = np.array([-u_val[k-1], -y_measure[k], -y_measure[k-1], uc_val[k], uc_val[k-1]]).reshape(M.shape)
+            M = np.array([r0_est, s0_est, s1_est, t0_est], float).reshape(-1, 1)
+            N = np.array([-u_val[k-1], -y_measure[k], -y_measure[k-1], uc_val[k]]).reshape(M.shape)
             u_val = np.concatenate((u_val, 
-                                    (N.T@M).reshape(-1,))) 
+                                    1/theta_hat[2]*(N.T@M).reshape(-1,)))
 
             ## HERE IS WHERE WE NEED THE LOOKUP TABLE AND THE PWM CALL
             pwm_val = VL.vel2duty(u_val[k])
@@ -264,6 +251,7 @@ if __name__ == "__main__":
             
             # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
             # print(theta_hat)
+            print(uc_val[k])
 
         time_np_arr = np.array(time_arr)
         # print(f'mean={time_np_arr.mean()},\tvar={time_np_arr.var()}')
