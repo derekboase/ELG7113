@@ -1,5 +1,5 @@
 import RPi.GPIO as GPIO
-import VL53L1X as VL
+#import VL53L1X as VL
 import os
 import csv
 import threading
@@ -7,9 +7,13 @@ from time import sleep
 import time
 import numpy as np
 import pandas as pd
+import serial as sp
 
 OUTPUT_DATA_PATH = "data.csv"
 PWM_PIN = 19 # Can use 12, 13, 19, 24
+
+port_name = '/dev/ttyACM0'
+ser = sp.Serial(port_name, 115200, timeout=0.5)
 
 df = pd.read_csv('dataset_1.csv')
 lst_duty = list(set(df['duty_cycle']))
@@ -26,7 +30,7 @@ def lookup_cycle(air_vel):
 
 def setup():
     global pwm, tof
-    tof = VL.VL53L1X(i2c_bus=1, i2c_address=0x29)
+    #tof = VL.VL53L1X(i2c_bus=1, i2c_address=0x29)
 
     # Setting up the motor control PWM on pin 19 (BCM)
     GPIO.setmode(GPIO.BCM)
@@ -35,6 +39,19 @@ def setup():
     pwm = GPIO.PWM(PWM_PIN, 1000)
     pwm.start(0)
 
+def baseline():
+    time.sleep(2)
+    for i in range(20):
+        ser.readline()
+    print('Taken out trash')
+    ser.reset_input_buffer()
+    baseline = []
+    for j in range(50):
+        while not ser.inWaiting():
+            pass # NOP
+    height = np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
+    baseline.append(height)
+    return float(np.array(baseline).mean())
 
 # def reading_tof():
 #     while True:
@@ -73,35 +90,33 @@ def kill_pwm():
     pwm.stop(0)
     GPIO.output(PWM_PIN, GPIO.LOW)
     GPIO.cleanup()
-
+ 
 
 #constants
 ZETA = 1
 OMEGA = 0.7071
-
+ts = 0.046
 #adaptation rate
-GAMMA = 0.00002
-alpha = 1
+GAMMA = 0.05
+alpha = 0.75
 #initial state of system
-y_p1_i = 0
-y_i = 0
-u_i = 0
+y_p1_i, y_i, u_i = 0, 0, 0
 
 #initial state of model
-ym_p1_i = 0
-ym_i = 0
+ym_p1_i, ym_i = 0, 0
 
-theta1_p2_i, theta1_p1_i, theta2_p2_i, theta2_p1_i = 0,0,0,0
-
-radius, g, m = 40/1000, 9.8, 0.01
+#constants
+radius, g, m = 38/1000, 9.8, 4/7000
 rho, Vb, v_eq = 1.225, (4/3)*np.pi*(radius**3), 2.82
 B = 2*g*(m-rho*Vb)/(m*v_eq)
 
-#init with model following condition
+#init with model following condition and zero for derivatives
 theta1_i = -(OMEGA**2)/B
-theta2_i = (2*ZETA*OMEGA)/(1+B)
+theta2_i = (2*ZETA*OMEGA-B)/(B)
 theta1_n_i = theta1_i/(alpha + theta1_i**2)
 theta2_n_i = theta2_i/(alpha + theta2_i**2)
+theta1_p2_i, theta1_p1_i, theta2_p2_i, theta2_p1_i = 0,0,0,0
+theta1_p1_n, theta2_p1_n = 0, 0
 
 def system_model(uc_i, ym_p1_i, ym_i):
     ym_p2_o = (OMEGA**2)*uc_i - 2*ZETA*OMEGA*ym_p1_i - (OMEGA**2)*ym_i
@@ -113,7 +128,33 @@ def system_model(uc_i, ym_p1_i, ym_i):
                           "ym":ym_o}
     return system_model_dict
 
-    return system_dict
+
+ym_values =[]
+
+def system_model_zoh(uc_1, uc_2):
+    global ym_values
+    
+    if len(ym_values) > 2:
+        ym_1 = ym_values[-1]
+        ym_2 = ym_values[-2]
+        ym_values.pop(0)
+    
+    else:
+        ym_1 = 0
+        ym_2 = 0
+        
+    am1 = -1.935
+    am2 = 0.937
+    b0 = 0.001035
+    b1 = 0.001013
+    ym_o = -ym_1*am1 -ym_2 + uc_1*b0 + uc_2*b1
+    ym_values.append(ym_o)
+    
+    system_model_dict = {"ym_p2":ym_2,
+                          "ym_p1":ym_1,
+                          "ym":ym_o}
+    return system_model_dict
+
 
 def controller(y_i, uc_i, y_p1_i, th1, th2):
     control_signal = th1*(y_i - uc_i) - th2*y_p1_i
@@ -151,10 +192,12 @@ def Adaptation_Law_Normalized(y_i, ym_i, ym_p1_i, ym_p2_i,
                         theta1_p1_n ,theta1_n_i,
                         theta2_p1_n, theta2_n_i):
 
-    #global theta1_p2_i, theta1_p1_i, theta1_i
-    #global theta2_p2_i, theta2_p1_i, theta2_i
+    error_val = y_i - ym_i
 
-    error = y_i - ym_i
+    if error_val !=0:
+        error = error_val
+    else:
+        error = 1/(10**100)
 
     theta1_p3_o = (GAMMA*error/OMEGA**2)*(2*ZETA*OMEGA*ym_p1_i+ym_p2_i) - 2*ZETA*OMEGA*theta1_p2_i - (OMEGA**2)*theta1_p1_i
     theta1_p2_o = theta1_p2_i + ts*theta1_p3_o
@@ -169,9 +212,14 @@ def Adaptation_Law_Normalized(y_i, ym_i, ym_p1_i, ym_p2_i,
     theta2_p1_o = theta2_p1_i + ts*theta2_p2_o
     theta2_o = theta2_n_i + ts*theta2_p1_o
 
-    theta2_p1_n = theta1_p1_o/(alpha+(theta1_p1_o/(GAMMA*error))**2)
+    theta2_p1_n = theta2_p1_o/(alpha+(theta2_p1_o/(GAMMA*error))**2)
+    
     theta2_n = theta2_n_i + ts*theta2_p1_n
-
+    
+    print("theta1_p1_o= " + str(theta1_p1_o))
+    print("error = " + str(error))
+  
+    
     result_dict = {
                    "theta1_p2": theta1_p2_o,
                    "theta1_p1": theta1_p1_o,
@@ -182,13 +230,13 @@ def Adaptation_Law_Normalized(y_i, ym_i, ym_p1_i, ym_p2_i,
                    "theta2_p1": theta2_p1_o,
                    "theta2": theta2_o,
                    "theta2n_p1":theta1_p1_n,
-                   "theta2_n":theta1_n,
+                   "theta2_n":theta2_n,
                   }
     return result_dict
 
 last2_pos = []
 y_p1_i = 0
-ts = 0.07
+
 def calc_speed(pos):
     global last2_pos
     global y_p1_i, _T
@@ -203,17 +251,19 @@ def calc_speed(pos):
 
 
 TARGET_POSITION = 0.2
-ts = 0
+
 #pwm.ChangeDutyCycle(0)
 
 datafile = open(OUTPUT_DATA_PATH, 'w', newline='')
 data_writer = csv.writer(datafile)
 data_header = ["timestep","y", "ym", "uc", "u", "theta1", "theta2"]
 data_writer.writerow(data_header)
+bottom = baseline()
+
 if __name__ == "__main__":
     setup()
-    tof.open()
-    tof.start_ranging(1)
+    #tof.open()
+    #tof.start_ranging(1)
     uc_i = TARGET_POSITION
 
     try:
@@ -223,12 +273,18 @@ if __name__ == "__main__":
         #pwm.ChangeDutyCycle(0)
         _T = time.process_time()
         while True:
-            y_i = 0.38 - tof.get_distance()*1e-3
+            
+            while not ser.inWaiting():
+                pass
+            y_i = bottom - float(ser.readline().decode('utf-8').rstrip())*1e-3
+            
+            #y_i = 0.38 - tof.get_distance()*1e-3
             print("position = " +str(y_i))
             calc_speed(y_i)
             print("speed = "+ str(y_p1_i))
 
-            model_results = system_model(uc_i, ym_p1_i, ym_i)
+            #model_results = system_model(uc_i, ym_p1_i, ym_i)
+            model_results = system_model_zoh(uc_i, uc_i)
             ym_p2_i = model_results["ym_p2"]
             ym_p1_i = model_results["ym_p1"]
             ym_i = model_results["ym"]
@@ -251,65 +307,69 @@ if __name__ == "__main__":
             pwm.ChangeDutyCycle(duty_cycle)
 
             data_row = [ts, y_i, ym_i, uc_i, u_i, theta1_i, theta2_i]
-            writer.writerow(data_row)
+            data_writer.writerow(data_row)
             ts = ts + 1
 
 
     except KeyboardInterrupt:
-        tof.stop_ranging() # This gets run once the code is stopped
+        #tof.stop_ranging() # This gets run once the code is stopped
         kill_pwm()
 
 #normalized MIT rule
 # if __name__ == "__main__":
-#     setup()
-#     tof.open()
-#     tof.start_ranging(1)
-#     uc_i = TARGET_POSITION
-#
-#     try:
+    # setup()
+    # #tof.open()
+    # #tof.start_ranging(1)
+    # uc_i = TARGET_POSITION
+
+    # try:
 # #         tof_thread = threading.Thread(target=reading_tof, daemon=True)
 # #         tof_thread.start()
-#         #user_input_pwm() # Set baseline pwm. Control/ID goes after
-#         #pwm.ChangeDutyCycle(0)
-#         _T = time.process_time()
-#         while True:
-#             y_i = 0.38 - tof.get_distance()*1e-3
-#             print("position = " +str(y_i))
-#             calc_speed(y_i)
-#             print("speed = "+ str(y_p1_i))
-#
-#             model_results = system_model(uc_i, ym_p1_i, ym_i)
-#             ym_p2_i = model_results["ym_p2"]
-#             ym_p1_i = model_results["ym_p1"]
-#             ym_i = model_results["ym"]
-#
-#             adapt_val = Adaptation_Law_Normalized(y_i, ym_i, ym_p1_i, ym_p2_i,
-#                                     theta1_p2_i, theta1_p1_i, theta1_i,
-#                                     theta2_p2_i, theta2_p1_i, theta2_i,
-#                                     theta1_p1_n, theta1_n_i,
-#                                     theta2_p1_n, theta2_n_i)
-#
-#             theta1_p2_i, theta1_p1_i, theta1_i = adapt_val["theta1_p2"], adapt_val["theta1_p1"], adapt_val["theta1"]
-#             theta2_p2_i, theta2_p1_i, theta2_i = adapt_val["theta2_p2"], adapt_val["theta2_p1"], adapt_val["theta2"]
-#             theta1_p1_n, theta1_n_i = adapt_val["theta1n_p1"], adapt_val["theta1_n"]
-#             theta2_p1_n, theta2_n_i = adapt_val["theta2n_p1"], adapt_val["theta2_n"]
-#
-#             u_i =  controller(y_i, uc_i, y_p1_i, theta1_n_i, theta2_n_i)
-#             vf = u_i + v_eq
-#             duty_cycle = lookup_cycle(vf)
-#             print("ui = " + str(u_i))
-#             print("duty_cycle = " +str(duty_cycle))
-#             print(" ")
-#             print(time.process_time() - _T)
-#             _T = time.process_time()
-#
-#             pwm.ChangeDutyCycle(duty_cycle)
-#
-#             data_row = [ts, y_i, ym_i, uc_i, u_i, theta1_i, theta2_i]
-#             writer.writerow(data_row)
-#             ts = ts + 1
-#
-#
-#     except KeyboardInterrupt:
-#         tof.stop_ranging() # This gets run once the code is stopped
-#         kill_pwm()
+        # #user_input_pwm() # Set baseline pwm. Control/ID goes after
+        # #pwm.ChangeDutyCycle(0)
+        # _T = time.time_ns()
+        # while True:
+            
+            # while not ser.inWaiting():
+                # pass
+            # y_i = bottom - float(ser.readline().decode('utf-8').rstrip())*1e-3
+  
+            # #y_i = 0.38 - tof.get_distance()*1e-3
+            # print("position = " +str(y_i))
+            # calc_speed(y_i)
+            # print("speed = "+ str(y_p1_i))
+
+            # model_results = system_model(uc_i, ym_p1_i, ym_i)
+            # ym_p2_i = model_results["ym_p2"]
+            # ym_p1_i = model_results["ym_p1"]
+            # ym_i = model_results["ym"]
+
+            # adapt_val = Adaptation_Law_Normalized(y_i, ym_i, ym_p1_i, ym_p2_i,
+                                    # theta1_p2_i, theta1_p1_i, theta1_i,
+                                    # theta2_p2_i, theta2_p1_i, theta2_i,
+                                    # theta1_p1_n, theta1_n_i,
+                                    # theta2_p1_n, theta2_n_i)
+
+            # theta1_p2_i, theta1_p1_i, theta1_i = adapt_val["theta1_p2"], adapt_val["theta1_p1"], adapt_val["theta1"]
+            # theta2_p2_i, theta2_p1_i, theta2_i = adapt_val["theta2_p2"], adapt_val["theta2_p1"], adapt_val["theta2"]
+            # theta1_p1_n, theta1_n_i = adapt_val["theta1n_p1"], adapt_val["theta1_n"]
+            # theta2_p1_n, theta2_n_i = adapt_val["theta2n_p1"], adapt_val["theta2_n"]
+
+            # u_i =  controller(y_i, uc_i, y_p1_i, theta1_n_i, theta2_n_i)
+            # vf = u_i + v_eq
+            # duty_cycle = lookup_cycle(vf)
+            # print("ui = " + str(u_i))
+            # print("duty_cycle = " +str(duty_cycle))
+            # print(time.time_ns()- _T)
+            # print(" ")
+            # _T = time.time_ns()
+
+            # pwm.ChangeDutyCycle(duty_cycle)
+
+            # data_row = [ts, y_i, ym_i, uc_i, u_i, theta1_i, theta2_i]
+            # data_writer.writerow(data_row)
+            # ts = ts + 1
+
+    # except KeyboardInterrupt:
+        # tof.stop_ranging() # This gets run once the code is stopped
+        # kill_pwm()
