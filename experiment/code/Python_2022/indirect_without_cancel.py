@@ -94,7 +94,7 @@ if __name__ == "__main__":
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
         omega_n = 0.7
-        zeta = 1  
+        zeta = 2  
 
         ## Coefficients from the nominal pulse function
 
@@ -118,9 +118,9 @@ if __name__ == "__main__":
 
         ## Reference signal information
 
-        final_time = 20
+        final_time = 80
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.1, upper_set=0.2, period=40):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.2, upper_set=0.1, period=40):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -141,19 +141,18 @@ if __name__ == "__main__":
         changing_pwm(72.0)
         time.sleep(2)
 
-            # Estimates k = 0
-        pulse_coeffs = [0.5, 0, 1, 1] 
-        theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
-        theta_arr = theta_hat
-        P = np.diag(initial_P_weights)
-        phi = np.zeros((4,1))  ## CONSIDER MOVING UP
-
             # Measurements and control parameters k = 0
         print('*******************************************************')
         print('\t\tSTARTING CODE')
         print(f'\t\tCoeffs={pulse_coeffs}')
         print('*******************************************************')
         time.sleep(2.5)
+        # Estimates k = 0
+        theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
+        theta_arr = theta_hat
+        P = np.diag(initial_P_weights)
+        height_init = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
+        phi = np.array([height_init, height_init, 0, 0])
         ser.reset_input_buffer()
         # Measurement
         while not ser.inWaiting():
@@ -182,7 +181,7 @@ if __name__ == "__main__":
 
 
             # Estimates k = 1
-        phi = np.array([-y_measure[0], 0, u_val[0], 0], float).reshape(-1,1) # phi of 0
+        phi = np.array([-y_measure[0], height_init, u_val[0], 0], float).reshape(-1,1) # phi of 0
         K = P@phi@inv(lam + phi.T@P@phi)
         theta_hat = theta_hat + K@(-y_measure[0] - phi.T@theta_hat)
         theta_arr = np.concatenate((theta_arr, 
