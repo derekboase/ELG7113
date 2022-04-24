@@ -90,11 +90,11 @@ if __name__ == "__main__":
         volume_ball = 4/3*np.pi*radius**3
         density = 1.2  # kg/m^3
 
-        Ts_val = 0.139
+        Ts_val = 0.510
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
         omega_n = 0.7
-        zeta = 2  
+        zeta = 1
 
         ## Coefficients from the nominal pulse function
 
@@ -108,19 +108,19 @@ if __name__ == "__main__":
         Bmz_tf, Amz_tf = co.tfdata(co.sample_system(co.tf([1], [1, 2*zeta*omega_n, omega_n**2]), method='zoh', Ts=Ts_val))
         AM1 = Amz_tf[0][0][1]
         AM2 = Amz_tf[0][0][2]
-        A0 = 0.5
+        A0 = 0.25
         T0_num = AM1 + AM2 + 1
         T1_num = A0*(T0_num)
-        lam = 0.9
-        initial_P_weights = [100]*4
-        # initial_P_weights = [1000, 1000, 0.01, 0.0]
+        lam = 1
+        # initial_P_weights = [100]*4
+        initial_P_weights = [1000, 1000, 0.1, 0.1]
         # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
         final_time = 80
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.2, upper_set=0.1, period=40):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.25, upper_set=0.2, period=40):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -138,20 +138,21 @@ if __name__ == "__main__":
         input('Place the ball in the bottom. Press ENTER to continue...')
         bottom = baseline()
         print(f'The baseline reading is {bottom}')
-        changing_pwm(72.0)
-        time.sleep(2)
+        # changing_pwm(VL.vel2duty(72))
+        
+        pulse_coeffs = [1, 1, 1, 1]
 
             # Measurements and control parameters k = 0
         print('*******************************************************')
         print('\t\tSTARTING CODE')
         print(f'\t\tCoeffs={pulse_coeffs}')
         print('*******************************************************')
-        time.sleep(2.5)
+        time.sleep(5)
         # Estimates k = 0
         theta_hat = np.array(pulse_coeffs, float).reshape(4, -1)
         theta_arr = theta_hat
         P = np.diag(initial_P_weights)
-        height_init = bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])
+        height_init = np.array([bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])])
         phi = np.array([height_init, height_init, 0, 0])
         ser.reset_input_buffer()
         # Measurement

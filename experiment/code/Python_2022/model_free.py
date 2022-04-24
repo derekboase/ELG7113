@@ -13,17 +13,17 @@ from numpy.linalg import inv
 
 if __name__ == "__main__":
     try:
-        D_MIN = 40
-        D_MAX = 85
-        D_EQ = 71.5
+        D_MIN = 0
+        D_MAX = 100
+        D_EQ = 71
         PWM_PIN = 19 # Using BCM enumeration
-        FINAL_TIME = 200
-        TS_VAL = 0.2322
+        FINAL_TIME = 60
+        TS_VAL = 0.510
         t = np.arange(0, FINAL_TIME + TS_VAL, TS_VAL)
-        LOWER_BOUND = -0.05
-        UPPER_BOUND = 0.005
+        LOWER_BOUND = -5
+        UPPER_BOUND = 5
 
-        def reference_signal(end_time=FINAL_TIME, Ts_func=TS_VAL, lower_set=0.25, upper_set=0.25, period=1000):
+        def reference_signal(end_time=FINAL_TIME, Ts_func=TS_VAL, lower_set=0.2, upper_set=0.15, period=60):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -41,7 +41,7 @@ if __name__ == "__main__":
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setup(PWM_PIN, GPIO.OUT)
                 GPIO.output(PWM_PIN, GPIO.LOW)
-                pwm = GPIO.PWM(PWM_PIN, 10000)
+                pwm = GPIO.PWM(PWM_PIN, 1000)
                 pwm.start(D_EQ)
             except RuntimeWarning:
                 kill_pwm()
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 GPIO.setmode(GPIO.BCM)
                 GPIO.setup(PWM_PIN, GPIO.OUT)
                 GPIO.output(PWM_PIN, GPIO.LOW)
-                pwm = GPIO.PWM(PWM_PIN, 10000)
+                pwm = GPIO.PWM(PWM_PIN, 1000)
                 pwm.start(D_EQ)
 
         def generate_SPD_matrix(n):
@@ -110,26 +110,30 @@ if __name__ == "__main__":
         ## Control Algorithm
 
         N = FINAL_TIME / TS_VAL
-        Z_ACTOR = 0.1
-        Z_CRITIC = 0.5
-        # Q_1 = generate_SPD_matrix(3)
-        # R_1 = generate_SPD_matrix(1)
+        Z_ACTOR = 0.01
+        Z_CRITIC = 0.05
+        Q_1 = generate_SPD_matrix(3)
+        R_1 = generate_SPD_matrix(1)
 
-        Q_1 = np.array([[0.51502986, 0.25789362, 0.06580822],
-                    [0.25789362, 0.19214249, 0.0747135],
-                    [0.06580822, 0.0747135, 0.0378436]])
-        R_1 = np.array([[0.07450969]])
+        # Q_1 = np.array([[0.51502986, 0.25789362, 0.06580822],
+                    # [0.25789362, 0.19214249, 0.0747135],
+                    # [0.06580822, 0.0747135, 0.0378436]])
+        # R_1 = np.array([[0.07450969]])
+        
+        Q_init = Q_1
+        R_init = R_1
 
         k, converge = 1, False  # Index and convergence flag
         E_k_1 = np.zeros((3, 1))  # Current quadratic error vector shape(3, 1)
         E_k1_1 = np.zeros((3, 1))  # Future quadratic error vector shape(3, 1)
         
-        # Wc_1 = generate_SPD_matrix(4)  # Initial critic matrix shape(4, 4)
+        Wc_1 = generate_SPD_matrix(4)  # Initial critic matrix shape(4, 4)
+        Wc_init = Wc_1
 
-        Wc_1 = np.array([[ 0.80349833,  0.30936819,  0.84494049,  0.71454207],
-                         [ 0.30936819,  0.21330422,  0.31156708,  0.36979277],
-                         [ 0.84494049,  0.31156708,  1.09927468,  0.53434843],
-                         [ 0.71454207,  0.36979277,  0.53434843,  0.9285541 ]])
+        # Wc_1 = np.array([[ 0.80349833,  0.30936819,  0.84494049,  0.71454207],
+                         # [ 0.30936819,  0.21330422,  0.31156708,  0.36979277],
+                         # [ 0.84494049,  0.31156708,  1.09927468,  0.53434843],
+                         # [ 0.71454207,  0.36979277,  0.53434843,  0.9285541 ]])
 
         Wa_1 = (1/Wc_1[3][3]*Wc_1[3][0:3]).reshape(1, 3)  # Initial actor matrix shape(1, 3) 
         Wa_1[0, 1] *= -1 # Negating the middle element (to add stability "pole" in the actor vector)
@@ -141,10 +145,10 @@ if __name__ == "__main__":
         print('*******************************************************')
         print('\t\tSTARTING CODE')
         print('*******************************************************')
-        time.sleep(10)
+        time.sleep(5)
         time_arr = []
         time_ns = time.time_ns()
-        while k < N and not converge:
+        while k < len(t) and not converge:
             Wa_1_1.append(Wa_1[0, 0])
             Wa_1_2.append(Wa_1[0, 1])
             Wa_1_3.append(Wa_1[0, 2])
@@ -192,6 +196,8 @@ if __name__ == "__main__":
             time_ns = time.time_ns()
             print(f'y={y_measure[-1]}\t,u_hat={u_hat_1}')
         
+        print(Q_init)
+        print(R_init)
         print(Wc_1)
         print(Wa_1)
 
@@ -201,6 +207,13 @@ if __name__ == "__main__":
         plt.plot(t[0:et], y_measure[0:et])
         plt.plot(t[0:et], ym[0:et])
         plt.show()
+        
+        plt.plot(t[0:et], u_hat_1_arr[1:et])
+        plt.show()
+        
+        plt.plot(t[0:et], Wa_1_1[0:et])
+        plt.plot(t[0:et], Wa_1_2[0:et])
+        plt.plot(t[0:et], Wa_1_3[0:et])
 
         input('Press ENTER to kill.')
         kill_pwm()

@@ -4,13 +4,12 @@ from time import sleep
 
 PWM_PIN = 19 # Can use 12, 13, 19, 24
 
-
 def setup():
 	global pwm
 	GPIO.setmode(GPIO.BCM)
 	GPIO.setup(PWM_PIN, GPIO.OUT)
 	GPIO.output(PWM_PIN, GPIO.LOW)
-	pwm = GPIO.PWM(PWM_PIN, 1000)
+	pwm = GPIO.PWM(PWM_PIN, 20000)
 	pwm.start(0)
 
 
