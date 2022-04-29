@@ -18,7 +18,7 @@ if __name__ == "__main__":
         D_EQ = 71
         PWM_PIN = 19 # Using BCM enumeration
         FINAL_TIME = 60
-        TS_VAL = 0.510
+        TS_VAL = 0.185
         t = np.arange(0, FINAL_TIME + TS_VAL, TS_VAL)
         LOWER_BOUND = -5
         UPPER_BOUND = 5
