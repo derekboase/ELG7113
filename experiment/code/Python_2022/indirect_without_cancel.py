@@ -90,10 +90,10 @@ if __name__ == "__main__":
         volume_ball = 4/3*np.pi*radius**3
         density = 1.2  # kg/m^3
 
-        Ts_val = 0.510
+        Ts_val = 0.185
         b_nom = 2*9.81*(mass-density*volume_ball)/(mass*veq)
 
-        omega_n = 0.7
+        omega_n = 1
         zeta = 1
 
         ## Coefficients from the nominal pulse function
@@ -108,19 +108,19 @@ if __name__ == "__main__":
         Bmz_tf, Amz_tf = co.tfdata(co.sample_system(co.tf([1], [1, 2*zeta*omega_n, omega_n**2]), method='zoh', Ts=Ts_val))
         AM1 = Amz_tf[0][0][1]
         AM2 = Amz_tf[0][0][2]
-        A0 = 0.25
+        A0 = 0.5
         T0_num = AM1 + AM2 + 1
         T1_num = A0*(T0_num)
-        lam = 1
-        # initial_P_weights = [100]*4
-        initial_P_weights = [1000, 1000, 0.1, 0.1]
+        lam = 0.99
+        #initial_P_weights = [10000]*4
+        initial_P_weights = [10000, 10000, 0.1, 0.1]
         # theta = np.array(pulse_coeffs, float).reshape(4, -1) ## ONLY FOR SIM
 
         ## Reference signal information
 
-        final_time = 80
+        final_time = 30
         t = np.arange(0, final_time + Ts_val, Ts_val)
-        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.25, upper_set=0.2, period=40):
+        def reference_signal(end_time=final_time, Ts_func=Ts_val, lower_set=0.2, upper_set=0.1, period=30):
             uc_func = []
             time = np.arange(0, end_time + Ts_func, Ts_func)
             for _t in time:
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         print(f'The baseline reading is {bottom}')
         # changing_pwm(VL.vel2duty(72))
         
-        pulse_coeffs = [1, 1, 1, 1]
+        #pulse_coeffs = [1, 1, 1, 1]
 
             # Measurements and control parameters k = 0
         print('*******************************************************')
@@ -153,7 +153,7 @@ if __name__ == "__main__":
         theta_arr = theta_hat
         P = np.diag(initial_P_weights)
         height_init = np.array([bottom - np.array([float(ser.readline().decode('utf-8').rstrip())*1e-3])])
-        phi = np.array([height_init, height_init, 0, 0])
+        phi = np.array([height_init[0], height_init[0], 0, 0])
         ser.reset_input_buffer()
         # Measurement
         while not ser.inWaiting():
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
 
             # Estimates k = 1
-        phi = np.array([-y_measure[0], height_init, u_val[0], 0], float).reshape(-1,1) # phi of 0
+        phi = np.array([-y_measure[0], height_init[0], u_val[0], 0], float).reshape(-1,1) # phi of 0
         K = P@phi@inv(lam + phi.T@P@phi)
         theta_hat = theta_hat + K@(-y_measure[0] - phi.T@theta_hat)
         theta_arr = np.concatenate((theta_arr, 
@@ -271,6 +271,13 @@ if __name__ == "__main__":
 
         # print(f'For k={k},\tM={M},\tden_rs={den_rs}')
         # print(theta_hat)
+        
+        DF_theta = pd.DataFrame(theta_arr.T, columns=['a1', 'a2', 'b0', 'b1'])
+        DF_theta.to_csv("theta_arr.csv")
+        DF_output = pd.DataFrame(y_measure.T)
+        DF_output.to_csv("output.csv")
+        DF_input = pd.DataFrame(u_val.T)
+        DF_input.to_csv("input.csv")
 
         input('Press ENTER to see graphs')
         for row in range(len(theta_arr)):
